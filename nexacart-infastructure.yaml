@@ -1,0 +1,716 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'NexaCart Solutions AWS Infrastructure Template - Full Production Stack'
+
+Resources:
+  # ==========================================
+  # 1. THE VIRTUAL PRIVATE CLOUD (VPC)
+  # ==========================================
+  NexaCartVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: NexaCart-VPC
+
+  # ==========================================
+  # 2. THE INTERNET GATEWAY (IGW)
+  # ==========================================
+  NexaCartIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: NexaCart-IGW
+
+  # ==========================================
+  # 3. ATTACH THE IGW TO THE VPC
+  # ==========================================
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      InternetGatewayId: !Ref NexaCartIGW
+
+  # ==========================================
+  # 4. PUBLIC SUBNETS
+  # ==========================================
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      AvailabilityZone: ap-south-1a
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: NexaCart-Public-Subnet-A
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      AvailabilityZone: ap-south-1b
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: NexaCart-Public-Subnet-B
+
+  # ==========================================
+  # 5. PRIVATE APP SUBNETS
+  # ==========================================
+  PrivateAppSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      AvailabilityZone: ap-south-1a
+      CidrBlock: 10.0.11.0/24
+      Tags:
+        - Key: Name
+          Value: NexaCart-Private-App-Subnet-A
+
+  PrivateAppSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      AvailabilityZone: ap-south-1b
+      CidrBlock: 10.0.12.0/24
+      Tags:
+        - Key: Name
+          Value: NexaCart-Private-App-Subnet-B
+
+  # ==========================================
+  # 6. PRIVATE DATA SUBNETS
+  # ==========================================
+  PrivateDataSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      AvailabilityZone: ap-south-1a
+      CidrBlock: 10.0.21.0/24
+      Tags:
+        - Key: Name
+          Value: NexaCart-Private-Data-Subnet-A
+
+  PrivateDataSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      AvailabilityZone: ap-south-1b
+      CidrBlock: 10.0.22.0/24
+      Tags:
+        - Key: Name
+          Value: NexaCart-Private-Data-Subnet-B
+
+  # ==========================================
+  # 7. PUBLIC ROUTE TABLE & ROUTE
+  # ==========================================
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      Tags:
+        - Key: Name
+          Value: NexaCart-Public-RT
+
+  PublicInternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref NexaCartIGW
+
+  # ==========================================
+  # 8. PUBLIC ROUTE TABLE ASSOCIATIONS
+  # ==========================================
+  PublicSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # ==========================================
+  # 9. ELASTIC IPS & NAT GATEWAYS
+  # ==========================================
+  NatEipA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEipA.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: NexaCart-NAT-A
+
+  NatEipB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEipB.AllocationId
+      SubnetId: !Ref PublicSubnetB
+      Tags:
+        - Key: Name
+          Value: NexaCart-NAT-B
+
+  # ==========================================
+  # 10. PRIVATE ROUTE TABLES & ROUTES
+  # ==========================================
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      Tags:
+        - Key: Name
+          Value: NexaCart-Private-RT-A
+
+  PrivateRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref NexaCartVPC
+      Tags:
+        - Key: Name
+          Value: NexaCart-Private-RT-B
+
+  PrivateRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayB
+
+  # ==========================================
+  # 11. PRIVATE ROUTE TABLE ASSOCIATIONS
+  # ==========================================
+  PrivateAppSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateAppSubnetA
+      RouteTableId: !Ref PrivateRouteTableA
+
+  PrivateDataSubnetAAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateDataSubnetA
+      RouteTableId: !Ref PrivateRouteTableA
+
+  PrivateAppSubnetBAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateAppSubnetB
+      RouteTableId: !Ref PrivateRouteTableB
+
+  PrivateDataSubnetBAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateDataSubnetB
+      RouteTableId: !Ref PrivateRouteTableB
+
+  # ==========================================
+  # 12. SECURITY GROUPS
+  # ==========================================
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow public web traffic to the Load Balancer
+      VpcId: !Ref NexaCartVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: NexaCart-ALB-SG
+
+  WebTierSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow web traffic strictly from the ALB
+      VpcId: !Ref NexaCartVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: NexaCart-Web-Tier-SG
+
+  AppTierSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow traffic strictly from the Web Tier
+      VpcId: !Ref NexaCartVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref WebTierSecurityGroup
+      Tags:
+        - Key: Name
+          Value: NexaCart-App-Tier-SG
+
+  DataTierSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow traffic strictly from the App Tier
+      VpcId: !Ref NexaCartVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref AppTierSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 6379
+          ToPort: 6379
+          SourceSecurityGroupId: !Ref AppTierSecurityGroup
+      Tags:
+        - Key: Name
+          Value: NexaCart-Data-Tier-SG
+
+  # ==========================================
+  # 13. APPLICATION LOAD BALANCER (ALB)
+  # ==========================================
+  NexaCartALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: NexaCart-ALB
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: NexaCart-ALB
+
+  WebTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: NexaCart-Web-TG
+      VpcId: !Ref NexaCartVPC
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: NexaCart-Web-TG
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NexaCartALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref WebTargetGroup
+
+  # ==========================================
+  # IAM ROLE FOR SSM ACCESS
+  # ==========================================
+  NexaCartSSMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: NexaCart-SSM-Role
+
+  NexaCartInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref NexaCartSSMRole
+
+  # ==========================================
+  # 14. COMPUTE TIER - WEB SERVERS
+  # UserData installs Apache and the NexaCart storefront
+  # EC2 instances in private subnets use NAT Gateway
+  # to reach the internet and download packages
+  # ==========================================
+  WebLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceType: t3.micro
+        ImageId: ami-09ed39e30153c3bf9
+        SecurityGroupIds:
+          - !Ref WebTierSecurityGroup
+        IamInstanceProfile:
+          Arn: !GetAtt NexaCartInstanceProfile.Arn
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+
+            # Health check endpoint for ALB
+            echo "OK" > /var/www/html/health
+
+            # NexaCart storefront
+            cat << 'HTMLEOF' > /var/www/html/index.html
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>NexaCart - AWS Architecture</title>
+                <style>
+                    * { box-sizing: border-box; margin: 0; padding: 0; }
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #eaeded; }
+                    header { background-color: #232f3e; color: white; padding: 15px 50px; display: flex; justify-content: space-between; align-items: center; }
+                    header h2 { color: #ff9900; font-size: 28px; }
+                    .nav-links { color: white; margin-left: 20px; font-weight: bold; }
+                    .arch-info { background-color: #232f3e; color: white; padding: 15px 50px; text-align: center; font-size: 13px; border-top: 1px solid #444; }
+                    .arch-info span { margin: 0 15px; }
+                    .arch-info .highlight { color: #ff9900; font-weight: bold; }
+                    .hero { background-color: white; padding: 60px 20px; text-align: center; border-bottom: 2px solid #ddd; }
+                    .hero h1 { color: #111; font-size: 36px; margin-bottom: 15px; }
+                    .hero p { color: #555; font-size: 18px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+                    .badge { display: inline-block; background-color: #4CAF50; color: white; padding: 8px 20px; border-radius: 20px; font-weight: bold; margin-top: 20px; }
+                    .products { display: flex; justify-content: center; gap: 30px; padding: 50px 20px; flex-wrap: wrap; }
+                    .product-card { background: white; width: 250px; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center; transition: transform 0.3s; }
+                    .product-card:hover { transform: translateY(-5px); }
+                    .product-img { background-color: #f4f4f4; height: 150px; margin-bottom: 15px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 40px; }
+                    .product-card h3 { font-size: 16px; margin-bottom: 8px; color: #111; }
+                    .product-card p { color: #555; font-size: 13px; margin-bottom: 10px; }
+                    .price { color: #B12704; font-size: 22px; font-weight: bold; margin: 10px 0; }
+                    .btn { background-color: #ffd814; border: 1px solid #fcd200; border-radius: 100px; padding: 10px 20px; cursor: pointer; width: 100%; font-weight: bold; }
+                    .btn:hover { background-color: #f7ca00; }
+                    footer { background-color: #232f3e; color: #aaa; text-align: center; padding: 20px; font-size: 12px; margin-top: 40px; }
+                </style>
+            </head>
+            <body>
+                <header>
+                    <h2>&#128722; NexaCart</h2>
+                    <div>
+                        <span class="nav-links">Hello, Student!</span>
+                        <span class="nav-links">&#128722; Cart (0)</span>
+                    </div>
+                </header>
+                <div class="arch-info">
+                    <span>&#9989; <span class="highlight">Region:</span> ap-south-1 (Mumbai)</span>
+                    <span>&#9989; <span class="highlight">Tier:</span> Web Server (Private Subnet)</span>
+                    <span>&#9989; <span class="highlight">Served via:</span> Application Load Balancer</span>
+                    <span>&#9989; <span class="highlight">HA:</span> Multi-AZ Auto Scaling Group</span>
+                </div>
+                <div class="hero">
+                    <h1>NexaCart Cloud Infrastructure</h1>
+                    <p>Running on AWS EC2 in a private subnet, served through an Application Load Balancer across two Availability Zones. Managed securely via AWS Systems Manager.</p>
+                    <div class="badge">&#10003; Live on AWS - Multi-AZ Production Stack</div>
+                </div>
+                <div class="products">
+                    <div class="product-card">
+                        <div class="product-img">&#127911;</div>
+                        <h3>Wireless ANC Earbuds</h3>
+                        <p>Premium noise-cancelling audio</p>
+                        <div class="price">$49.99</div>
+                        <button class="btn">Add to Cart</button>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-img">&#127968;</div>
+                        <h3>Smart Home Hub V2</h3>
+                        <p>Control your entire home</p>
+                        <div class="price">$129.50</div>
+                        <button class="btn">Add to Cart</button>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-img">&#128187;</div>
+                        <h3>Pro Gaming Laptop</h3>
+                        <p>High performance computing</p>
+                        <div class="price">$1,499.00</div>
+                        <button class="btn">Add to Cart</button>
+                    </div>
+                    <div class="product-card">
+                        <div class="product-img">&#128247;</div>
+                        <h3>4K Action Camera</h3>
+                        <p>Capture every adventure</p>
+                        <div class="price">$299.99</div>
+                        <button class="btn">Add to Cart</button>
+                    </div>
+                </div>
+                <footer>
+                    <p>NexaCart Solutions &copy; 2026 | Hosted on Amazon Web Services | Region: ap-south-1 Mumbai</p>
+                    <p style="margin-top:8px;">Architecture: EC2 Auto Scaling + ALB + VPC + RDS + ElastiCache | Managed via AWS Systems Manager</p>
+                </footer>
+            </body>
+            </html>
+            HTMLEOF
+
+  WebAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn:
+      - NatGatewayA
+      - NatGatewayB
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateAppSubnetA
+        - !Ref PrivateAppSubnetB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebLaunchTemplate
+        Version: !GetAtt WebLaunchTemplate.LatestVersionNumber
+      MinSize: '2'
+      MaxSize: '4'
+      DesiredCapacity: '2'
+      TargetGroupARNs:
+        - !Ref WebTargetGroup
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      Tags:
+        - Key: Name
+          Value: NexaCart-Web-Server
+          PropagateAtLaunch: true
+
+  # ==========================================
+  # 15. COMPUTE TIER - APP SERVERS (BACKEND)
+  # App tier handles business logic - order processing,
+  # payment handling, inventory management
+  # ==========================================
+  AppLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        InstanceType: t3.micro
+        ImageId: ami-09ed39e30153c3bf9
+        SecurityGroupIds:
+          - !Ref AppTierSecurityGroup
+        IamInstanceProfile:
+          Arn: !GetAtt NexaCartInstanceProfile.Arn
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            yum update -y
+            yum install -y amazon-ssm-agent
+            systemctl enable amazon-ssm-agent
+            systemctl start amazon-ssm-agent
+            echo "NexaCart App Tier Running - $(hostname)" > /tmp/app-status.txt
+
+  AppAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    DependsOn:
+      - NatGatewayA
+      - NatGatewayB
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateAppSubnetA
+        - !Ref PrivateAppSubnetB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref AppLaunchTemplate
+        Version: !GetAtt AppLaunchTemplate.LatestVersionNumber
+      MinSize: '2'
+      MaxSize: '4'
+      DesiredCapacity: '2'
+      Tags:
+        - Key: Name
+          Value: NexaCart-App-Server
+          PropagateAtLaunch: true
+
+  # ==========================================
+  # 16. SECRETS MANAGER
+  # ==========================================
+  NexaCartDBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: NexaCartDatabaseSecret
+      Description: Database credentials for NexaCart RDS
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"nexacartadmin"}'
+        GenerateStringKey: password
+        PasswordLength: 16
+        ExcludeCharacters: '"@/\'
+
+  # ==========================================
+  # 17. DATA TIER (RDS & ELASTICACHE REDIS)
+  # ==========================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: NexaCart DB Subnet Group
+      SubnetIds:
+        - !Ref PrivateDataSubnetA
+        - !Ref PrivateDataSubnetB
+
+  NexaCartDatabase:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: nexacartdb
+      AllocatedStorage: 20
+      DBInstanceClass: db.t3.micro
+      Engine: mysql
+      MasterUsername: '{{resolve:secretsmanager:NexaCartDatabaseSecret:SecretString:username}}'
+      MasterUserPassword: '{{resolve:secretsmanager:NexaCartDatabaseSecret:SecretString:password}}'
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref DataTierSecurityGroup
+      MultiAZ: false
+      # AWS Academy: MultiAZ set to false to conserve credits.
+      # Production value: MultiAZ: true
+      # With MultiAZ: true, RDS automatically creates a synchronous
+      # standby in ap-south-1b for automatic failover (~60 seconds).
+      StorageType: gp2
+      Tags:
+        - Key: Name
+          Value: NexaCart-RDS
+
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      Description: NexaCart Cache Subnet Group
+      SubnetIds:
+        - !Ref PrivateDataSubnetA
+        - !Ref PrivateDataSubnetB
+
+  NexaCartRedis:
+    Type: AWS::ElastiCache::ReplicationGroup
+    Properties:
+      ReplicationGroupDescription: NexaCart Redis Cluster
+      Engine: redis
+      CacheNodeType: cache.t3.micro
+      NumNodeGroups: 1
+      ReplicasPerNodeGroup: 1
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+      SecurityGroupIds:
+        - !Ref DataTierSecurityGroup
+
+  # ==========================================
+  # 18. AWS BACKUP (DISASTER RECOVERY)
+  # Matches diagram: AWS Backup in Regional Services
+  # Takes daily snapshots of RDS at 2:00 AM
+  # 7-day retention satisfies audit logging and
+  # payment security compliance requirements
+  # Cross-region copies to ap-southeast-1 (Singapore)
+  # for regional DR - RPO: 5 min (RDS) / 24 hrs (EBS)
+  # RTO: 2-4 hours (manual restore in Singapore)
+  # NOTE: AWS Academy may restrict cross-region copy.
+  # If deployment fails, comment out the CopyActions
+  # block and retain the vault and plan only.
+  # ==========================================
+  NexaCartBackupVault:
+    Type: AWS::Backup::BackupVault
+    Properties:
+      BackupVaultName: NexaCart-Backup-Vault
+
+  NexaCartBackupPlan:
+    Type: AWS::Backup::BackupPlan
+    DependsOn: NexaCartBackupVault
+    Properties:
+      BackupPlan:
+        BackupPlanName: NexaCart-Daily-Backup
+        BackupPlanRule:
+          - RuleName: DailyBackupRule
+            TargetBackupVault: !Ref NexaCartBackupVault
+            ScheduleExpression: cron(0 2 * * ? *)
+            # Runs every day at 2:00 AM UTC
+            StartWindowMinutes: 60
+            CompletionWindowMinutes: 120
+            Lifecycle:
+              DeleteAfterDays: 7
+              # 7-day retention period satisfies audit logging
+              # and payment security compliance requirements
+            CopyActions:
+              - DestinationBackupVaultArn: !Sub
+                  arn:aws:backup:ap-southeast-1:${AWS::AccountId}:backup-vault:Default
+                # Cross-region copy to Singapore (ap-southeast-1)
+                # Snapshots stored independently in Singapore S3
+                # Unaffected if Mumbai region fails completely
+                Lifecycle:
+                  DeleteAfterDays: 30
+                  # Keep Singapore copies for 30 days
+
+  NexaCartBackupSelection:
+    Type: AWS::Backup::BackupSelection
+    DependsOn: NexaCartBackupPlan
+    Properties:
+      BackupPlanId: !Ref NexaCartBackupPlan
+      BackupSelection:
+        SelectionName: NexaCart-Resources
+        IamRoleArn: !Sub
+          arn:aws:iam::${AWS::AccountId}:role/service-role/AWSBackupDefaultServiceRole
+        # Uses AWS default backup service role
+        # No custom IAM role needed - Academy compatible
+        Resources:
+          - !Sub arn:aws:rds:ap-south-1:${AWS::AccountId}:db:nexacartdb
+          # Backs up RDS database (nexacartdb) daily
+
+# ==========================================
+# 19. OUTPUTS
+# ==========================================
+Outputs:
+  WebsiteURL:
+    Description: NexaCart storefront URL - click to view the live website
+    Value: !Sub "http://${NexaCartALB.DNSName}"
+
+  ALBDNSName:
+    Description: Application Load Balancer DNS Name
+    Value: !GetAtt NexaCartALB.DNSName
+
+  RDSEndpoint:
+    Description: RDS Database Endpoint
+    Value: !GetAtt NexaCartDatabase.Endpoint.Address
+
+  WebASGName:
+    Description: Web Tier Auto Scaling Group
+    Value: !Ref WebAutoScalingGroup
+
+  AppASGName:
+    Description: App Tier Auto Scaling Group
+    Value: !Ref AppAutoScalingGroup
+
+  BackupVaultName:
+    Description: AWS Backup Vault for NexaCart DR snapshots
+    Value: !Ref NexaCartBackupVault
+
+  BackupPlanId:
+    Description: AWS Backup Plan ID - daily snapshots with Singapore cross-region copy
+    Value: !Ref NexaCartBackupPlan
